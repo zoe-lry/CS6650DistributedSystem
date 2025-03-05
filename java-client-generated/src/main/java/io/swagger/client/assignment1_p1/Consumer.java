@@ -26,8 +26,8 @@ public class Consumer implements Runnable {
   private final CountDownLatch firstDoneLatch;
 
   public static final int MAX_RETRIES = 5;
-  //    public static final String BASE_URL = "http://localhost:8080/";
-  public static final String BASE_URL = "http://ec2-34-209-153-11.us-west-2.compute.amazonaws.com:8080/Assignment/";
+//      public static final String BASE_URL = "http://localhost:8080";
+  public static final String BASE_URL = "http://ec2-35-160-136-73.us-west-2.compute.amazonaws.com:8080/Server/";
 
 
   public Consumer(BlockingQueue<LiftRideEvent> queue, int consumerId, int numRequests,
@@ -74,17 +74,18 @@ public class Consumer implements Runnable {
             && response.getStatusCode() < 600) {  // retry if 400 - 600
           System.out.println(
               "Received Error Code: " + response.getStatusCode() + "Attempt: " + (attempt));
-          if (attempt == MAX_RETRIES) {
-            numOfFailures++;   // record the failed case
-          }
-        } else {
-          numOfFailures++;
-          return false; // break if other status code received
         }
+//
+//        } else {
+//          numOfFailures++;
+//          return false; // break if other status code received
+//        }
       } catch (ApiException e) {
-        System.err.println("Exception when calling ResortsApi#addSeason");
+        System.err.println("Exception when calling ResortsApi#addSeason." + e.getCode());
         e.printStackTrace();
-        return false;
+      }
+      if (attempt == MAX_RETRIES) {
+        numOfFailures++;   // record the failed case
       }
       return false;
     });

@@ -29,8 +29,8 @@ public class Consumer implements Runnable {
   private final CountDownLatch firstDoneLatch;
 
   public static final int MAX_RETRIES = 5;
-  //    public static final String BASE_URL = "http://localhost:8080/";
-  public static final String BASE_URL = "http://ec2-34-209-153-11.us-west-2.compute.amazonaws.com:8080/Assignment/";
+      public static final String BASE_URL = "http://localhost:8080/";
+//  public static final String BASE_URL = "http://ec2-34-209-153-11.us-west-2.compute.amazonaws.com:8080/Assignment/";
 
 
   public Consumer(BlockingQueue<LiftRideEvent> queue, int consumerId, int numRequests,
