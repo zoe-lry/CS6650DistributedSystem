@@ -18,7 +18,7 @@ import model.LiftRideEvent;
 public class MultiThreadedConsumer {
   private static ConnectionFactory factory;
 
-  private static final Integer NUM_WORKS = 500;
+  private static final Integer NUM_WORKS = 1000;
 //  private static final String HOST = "localhost";
   private static final String HOST = "172.31.31.186"; //private
 //  private static final String HOST = "35.91.180.143"; //public
