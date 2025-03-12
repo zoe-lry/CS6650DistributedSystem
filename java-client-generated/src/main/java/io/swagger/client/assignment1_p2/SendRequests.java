@@ -56,7 +56,7 @@ public class SendRequests {
         (TOTAL_NUM_EVENTS / (wallTime / 1000.0)));
 
     // Write to CSV
-    CSVHandler.writeLogsToCSV(allLogs, "java-client-generated/request_logs.csv");
+    CSVHandler.writeLogsToCSV(allLogs, "request_logs.csv");
     // Calculate the mean, medium, p99, min, max
     CSVHandler.printResponseTimeStats(allLogs);
   }

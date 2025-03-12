@@ -11,6 +11,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 
@@ -24,19 +25,23 @@ public class Consumer implements Runnable {
   private final SkiersApi skiersApi = new SkiersApi();
   private final ConcurrentLinkedQueue<ConsumerResult> resultsQueue;  // Queue to send results to main thread
   private final CountDownLatch firstDoneLatch;
+  private final AtomicBoolean firstDoneTriggered;
 
   public static final int MAX_RETRIES = 5;
-//      public static final String BASE_URL = "http://localhost:8080";
-  public static final String BASE_URL = "http://ec2-35-160-136-73.us-west-2.compute.amazonaws.com:8080/Server/";
+  //      public static final String BASE_URL = "http://localhost:8080";
+//  public static final String BASE_URL = "http://ec2-35-91-165-228.us-west-2.compute.amazonaws.com:8080/Server/"; // Single Servlet
+  public static final String BASE_URL = "http://server-load-balancer-165699902.us-west-2.elb.amazonaws.com/Server/"; //Load Balancer
 
 
   public Consumer(BlockingQueue<LiftRideEvent> queue, int consumerId, int numRequests,
-      ConcurrentLinkedQueue<ConsumerResult> resultsQueue, CountDownLatch firstDoneLatch) {
+      ConcurrentLinkedQueue<ConsumerResult> resultsQueue, CountDownLatch firstDoneLatch,
+      AtomicBoolean firstDoneTriggered) {
     this.queue = queue;
     this.consumerId = consumerId;
     this.numRequests = numRequests;
     this.resultsQueue = resultsQueue;
     this.firstDoneLatch = firstDoneLatch;
+    this.firstDoneTriggered = firstDoneTriggered;
   }
 
   @Override
@@ -55,7 +60,7 @@ public class Consumer implements Runnable {
       return false;
     });
     resultsQueue.add(new ConsumerResult(numOfSuccess, numOfFailures));
-    if (firstDoneLatch.getCount() > 0) {
+    if (firstDoneTriggered.compareAndSet(false, true)) {
       firstDoneLatch.countDown();
     }
   }
@@ -63,32 +68,24 @@ public class Consumer implements Runnable {
   // If the client receives a 5XX response code (Web server error), or a 4XX response code (from your servlet),
   // it should retry the request up to 5 times before counting it as a failed request.
   private void sendRequest(LiftRideEvent event) {
-    IntStream.rangeClosed(1, MAX_RETRIES).anyMatch(attempt -> {
+    for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
-        ApiResponse<Void> response = skiersApi.writeNewLiftRideWithHttpInfo(event.getBody(),
-            event.getResortID(), event.getSeasonID(), event.getDayID(), event.getSkierID());
-        if (response.getStatusCode() == 201) {    // break if status code is 200
+        ApiResponse<Void> response = skiersApi.writeNewLiftRideWithHttpInfo(
+            event.getBody(), event.getResortID(), event.getSeasonID(), event.getDayID(), event.getSkierID());
+        if (response.getStatusCode() == 201) {
           numOfSuccess++;
-          return true;
-        } else if (response.getStatusCode() >= 400
-            && response.getStatusCode() < 600) {  // retry if 400 - 600
-          System.out.println(
-              "Received Error Code: " + response.getStatusCode() + "Attempt: " + (attempt));
+          break;
+        } else if (response.getStatusCode() >= 400 && response.getStatusCode() < 600) {
+          System.out.println("Consumer " + consumerId + " received error code: " +
+              response.getStatusCode() + " on attempt " + attempt);
         }
-//
-//        } else {
-//          numOfFailures++;
-//          return false; // break if other status code received
-//        }
       } catch (ApiException e) {
-        System.err.println("Exception when calling ResortsApi#addSeason." + e.getCode());
+        System.err.println("Consumer " + consumerId + " encountered exception: " + e.getCode());
         e.printStackTrace();
       }
       if (attempt == MAX_RETRIES) {
-        numOfFailures++;   // record the failed case
+        numOfFailures++;
       }
-      return false;
-    });
+    }
   }
-
 }
