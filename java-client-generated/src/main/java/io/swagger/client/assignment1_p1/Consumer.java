@@ -28,9 +28,9 @@ public class Consumer implements Runnable {
   private final AtomicBoolean firstDoneTriggered;
 
   public static final int MAX_RETRIES = 5;
-  //      public static final String BASE_URL = "http://localhost:8080";
+        public static final String BASE_URL = "http://localhost:8080";
 //  public static final String BASE_URL = "http://ec2-35-91-165-228.us-west-2.compute.amazonaws.com:8080/Server/"; // Single Servlet
-  public static final String BASE_URL = "http://server-load-balancer-165699902.us-west-2.elb.amazonaws.com/Server/"; //Load Balancer
+//  public static final String BASE_URL = "http://server-load-balancer-165699902.us-west-2.elb.amazonaws.com/Server/"; //Load Balancer
 
 
   public Consumer(BlockingQueue<LiftRideEvent> queue, int consumerId, int numRequests,

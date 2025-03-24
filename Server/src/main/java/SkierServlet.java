@@ -25,8 +25,8 @@ public class SkierServlet extends HttpServlet {
 
   private static final Gson GSON = new Gson();
   private static final String QUEUE_NAME = "rpc_queue";
-  private static final String HOST = "172.31.31.xxx";
-//  private static final String HOST = "localhost";
+//  private static final String HOST = "172.31.31.xxx";
+  private static final String HOST = "localhost";
   private static final int NUM_CHANS = 500;   // Number of channels to add to pools
   private static final int WAIT_TIME_SECS = 5;
   private GenericObjectPool<Channel> pool;
