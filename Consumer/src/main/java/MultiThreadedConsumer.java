@@ -16,19 +16,18 @@ import java.util.stream.IntStream;
 import model.LiftRideEvent;
 
 public class MultiThreadedConsumer {
-
   private static ConnectionFactory factory;
 
-  private static final Integer NUM_WORKS = 1000;
-  //  private static final String HOST = "localhost";
-  private static final String HOST = "172.31.31.186"; //private
-  //  private static final String HOST = "35.91.180.143"; //public
-  private static Map<Integer, CopyOnWriteArrayList<LiftRideEvent>> records;
-  ;
+  private static final Integer NUM_WORKS = 500;
+//  private static final String HOST = "localhost";
+  private static final String QUEUE_NAME = "rpc_queue";
+
+    private static final String HOST = "172.31.31.186"; //private
+//  private static final String HOST = "35.91.180.143"; //public
+  private static Map<Integer, CopyOnWriteArrayList<LiftRideEvent>> records;;
   private static AtomicInteger count = new AtomicInteger(0);
 
-  public static void main(String[] args)
-      throws IOException, TimeoutException, InterruptedException {
+  public static void main(String[] args) throws IOException, TimeoutException, InterruptedException {
     records = new ConcurrentHashMap<>();
     factory = new ConnectionFactory();
     factory.setHost(HOST);
@@ -36,6 +35,10 @@ public class MultiThreadedConsumer {
     factory.setPassword("admin");
 
     Connection connection = factory.newConnection();
+    Channel channel = connection.createChannel();
+    channel.queueDeclare(QUEUE_NAME, false, false, false, null);
+    channel.queuePurge(QUEUE_NAME);
+
     System.out.println("✅ Successfully connected to RabbitMQ");
 
     ExecutorService executorService = Executors.newFixedThreadPool(NUM_WORKS);
@@ -45,4 +48,7 @@ public class MultiThreadedConsumer {
     executorService.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
 
   }
+
+
+
 }
