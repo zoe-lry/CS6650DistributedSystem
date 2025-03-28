@@ -75,8 +75,8 @@ public class SkierServlet extends HttpServlet {
     config.setBlockWhenExhausted(true); // clients will block when pool is exhausted, for a maximum duration of WAIT_TIME_SECS
     config.setMaxWait(Duration.ofSeconds(WAIT_TIME_SECS));  // tune WAIT_TIME_SECS to meet your workload/demand
     // The channel facory generates new channels on demand, as needed by the GenericObjectPool
-    RMQChannelFactory chanFactory = new RMQChannelFactory (connection);
-    return  new GenericObjectPool<Channel>(chanFactory, config);
+    RMQChannelFactory chanFactory = new RMQChannelFactory(connection);
+    return new GenericObjectPool<Channel>(chanFactory, config);
   }
 
   @Override
@@ -94,27 +94,22 @@ public class SkierServlet extends HttpServlet {
       return;
     }
     // Send to the Rabbit MQ
-    Channel channel = null;
     try {
-      channel = pool.borrowObject();
-      channel.basicPublish("", QUEUE_NAME, null, GSON.toJson(liftRideEvent).getBytes(StandardCharsets.UTF_8));
+      sendToRabbitMQ(liftRideEvent);
       res.setStatus(HttpServletResponse.SC_CREATED);
-//      res.getWriter().write("Event published successfully!");
     } catch (Exception e) {
       System.err.println("Error publishing to RabbitMQ: " + e.getMessage());
       res.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
       res.getWriter().write("Failed to publish to RabbitMQ");
-    } finally {
-      // 4) Return the channel to the pool (if it was successfully borrowed)
-      if (channel != null) {
-        try {
-          pool.returnObject(channel);
-        } catch (Exception e) {
-          // Log an error if returning object to pool fails
-          System.err.println("Error returning channel to pool: " + e.getMessage());
-        }
-      }
     }
+
+  }
+
+  private void sendToRabbitMQ(LiftRideEvent liftRideEvent) throws Exception {
+    Channel channel = pool.borrowObject();
+    channel.basicPublish("", QUEUE_NAME, null,
+        GSON.toJson(liftRideEvent).getBytes(StandardCharsets.UTF_8));
+    pool.returnObject(channel);
   }
 
   @Override
@@ -143,77 +138,77 @@ public class SkierServlet extends HttpServlet {
     if (urlPath == null || urlPath.isEmpty()) {
       throw new InvalidEventException("Missing or empty URL");
     }
-      String[] parts = urlPath.split("/");
-      // Expected: /{resortID}/seasons/{seasonID}/days/{dayID}/skiers/{skierID}
-      // parts = ["", "1", "seasons", "2025", "days", "1", "skiers", "123"]
-      if (parts.length != 8 ||
-          !"seasons".equals(parts[2]) ||
-          !"days".equals(parts[4]) ||
-          !"skiers".equals(parts[6])) {
-        throw new InvalidEventException("URL path format is incorrect");
-      }
-
-      // Parse numeric fields
-      int resortId, seasonId, dayId, skierId;
-      try {
-        resortId = Integer.parseInt(parts[1]);
-        seasonId = Integer.parseInt(parts[3]);
-        dayId = Integer.parseInt(parts[5]);
-        skierId = Integer.parseInt(parts[7]);
-      } catch (NumberFormatException e) {
-        throw new InvalidEventException("One of the URL path fields is not a valid integer");
-      }
-
-      // Basic constraints
-      if (resortId < 1 || resortId > 10) {
-        throw new InvalidEventException("resortId out of range");
-      }
-      if (seasonId != 2025) {
-        throw new InvalidEventException("seasonId must be 2025");
-      }
-      if (dayId < 1 || dayId > 366) {
-        throw new InvalidEventException("dayId out of range");
-      }
-      if (skierId < 1 || skierId > 100000) {
-        throw new InvalidEventException("skierId out of range");
-      }
-
-      // 2) Parse JSON body into LiftRide
-      LiftRide liftRide = parseLiftRideBody(req);
-      if (liftRide == null) {
-        throw new InvalidEventException("Invalid or missing JSON body");
-      }
-
-      // 3) If everything is valid, create and return a LiftRideEvent
-      return new LiftRideEvent(liftRide, resortId, String.valueOf(seasonId),
-          String.valueOf(dayId), skierId);
+    String[] parts = urlPath.split("/");
+    // Expected: /{resortID}/seasons/{seasonID}/days/{dayID}/skiers/{skierID}
+    // parts = ["", "1", "seasons", "2025", "days", "1", "skiers", "123"]
+    if (parts.length != 8 ||
+        !"seasons".equals(parts[2]) ||
+        !"days".equals(parts[4]) ||
+        !"skiers".equals(parts[6])) {
+      throw new InvalidEventException("URL path format is incorrect");
     }
 
+    // Parse numeric fields
+    int resortId, seasonId, dayId, skierId;
+    try {
+      resortId = Integer.parseInt(parts[1]);
+      seasonId = Integer.parseInt(parts[3]);
+      dayId = Integer.parseInt(parts[5]);
+      skierId = Integer.parseInt(parts[7]);
+    } catch (NumberFormatException e) {
+      throw new InvalidEventException("One of the URL path fields is not a valid integer");
+    }
 
-    /**
+    // Basic constraints
+    if (resortId < 1 || resortId > 10) {
+      throw new InvalidEventException("resortId out of range");
+    }
+    if (seasonId != 2025) {
+      throw new InvalidEventException("seasonId must be 2025");
+    }
+    if (dayId < 1 || dayId > 366) {
+      throw new InvalidEventException("dayId out of range");
+    }
+    if (skierId < 1 || skierId > 100000) {
+      throw new InvalidEventException("skierId out of range");
+    }
+
+    // 2) Parse JSON body into LiftRide
+    LiftRide liftRide = parseLiftRideBody(req);
+    if (liftRide == null) {
+      throw new InvalidEventException("Invalid or missing JSON body");
+    }
+
+    // 3) If everything is valid, create and return a LiftRideEvent
+    return new LiftRideEvent(liftRide, resortId, String.valueOf(seasonId),
+        String.valueOf(dayId), skierId);
+  }
+
+
+  /**
      * Reads the JSON from the request and attempts to parse a LiftRide object.
      * Returns null if parsing fails.
-     */
-    private LiftRide parseLiftRideBody(HttpServletRequest req) {
-      try (BufferedReader reader = req.getReader()) {
-        StringBuilder sb = new StringBuilder();
-        String line;
-        while ((line = reader.readLine()) != null) {
-          sb.append(line);
-        }
-        LiftRide liftRide = GSON.fromJson(sb.toString(), LiftRide.class);
-        // Validate numeric constraints for the LiftRide
-        if (liftRide.getTime() == null || liftRide.getTime() < 1 || liftRide.getTime() > 360) {
-          throw new InvalidEventException("time must be between 1 and 360");
-        }
-        if (liftRide.getLiftID() == null || liftRide.getLiftID() < 1 || liftRide.getLiftID() > 40) {
-          throw new InvalidEventException("liftID must be between 1 and 40");
-        }
-        return liftRide;
-      } catch (IOException | JsonSyntaxException |InvalidEventException e) {
-        return null;
+   */
+  private LiftRide parseLiftRideBody(HttpServletRequest req) {
+    try (BufferedReader reader = req.getReader()) {
+      StringBuilder sb = new StringBuilder();
+      String line;
+      while ((line = reader.readLine()) != null) {
+        sb.append(line);
       }
+      LiftRide liftRide = GSON.fromJson(sb.toString(), LiftRide.class);
+      // Validate numeric constraints for the LiftRide
+      if (liftRide.getTime() == null || liftRide.getTime() < 1 || liftRide.getTime() > 360) {
+        throw new InvalidEventException("time must be between 1 and 360");
+      }
+      if (liftRide.getLiftID() == null || liftRide.getLiftID() < 1 || liftRide.getLiftID() > 40) {
+        throw new InvalidEventException("liftID must be between 1 and 40");
+      }
+      return liftRide;
+    } catch (IOException | JsonSyntaxException | InvalidEventException e) {
+      return null;
     }
+  }
 
 //  @Override
 //  protected void doGet(HttpServletRequest req, HttpServletResponse res)

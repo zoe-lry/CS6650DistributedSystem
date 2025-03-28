@@ -14,21 +14,37 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
 import model.LiftRideEvent;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
 
 public class MultiThreadedConsumer {
+
   private static ConnectionFactory factory;
 
-  private static final Integer NUM_WORKS = 500;
+  private static final Integer NUM_WORKS = 50;
 //  private static final String HOST = "localhost";
+    private static final String HOST = "172.31.31.186"; //private
+  //  private static final String HOST = "35.91.180.143"; //public
   private static final String QUEUE_NAME = "rpc_queue";
 
-    private static final String HOST = "172.31.31.186"; //private
-//  private static final String HOST = "35.91.180.143"; //public
-  private static Map<Integer, CopyOnWriteArrayList<LiftRideEvent>> records;;
-  private static AtomicInteger count = new AtomicInteger(0);
+  // Number of threads actually writing to DynamoDB in parallel
+  private static final int NUM_FLUSH_THREADS = 30;
+  ;
 
-  public static void main(String[] args) throws IOException, TimeoutException, InterruptedException {
-    records = new ConcurrentHashMap<>();
+  public static void main(String[] args)
+      throws IOException, TimeoutException, InterruptedException {
+
+//    DynamoDbClient dynamoDb = DynamoDbClient.builder()
+//        .endpointOverride(java.net.URI.create("http://localhost:8000"))
+//        .build();
+
+    DynamoDbClient dynamoDb = DynamoDbClient.builder()
+        .region(Region.US_WEST_2)
+        .build();
+
+    // 2) Create a shared batch writer that flushes to DynamoDB using multiple threads
+    DynamoDBBatchWriter batchWriter = new DynamoDBBatchWriter(dynamoDb, NUM_FLUSH_THREADS);
+
     factory = new ConnectionFactory();
     factory.setHost(HOST);
     factory.setUsername("admin");
@@ -43,12 +59,11 @@ public class MultiThreadedConsumer {
 
     ExecutorService executorService = Executors.newFixedThreadPool(NUM_WORKS);
     IntStream.range(0, NUM_WORKS).forEach(i -> {
-      executorService.submit(new ConsumerWorker(connection, records, count));
+      executorService.submit(new ConsumerWorker(connection, batchWriter));
     });
     executorService.awaitTermination(Long.MAX_VALUE, TimeUnit.SECONDS);
 
   }
-
 
 
 }

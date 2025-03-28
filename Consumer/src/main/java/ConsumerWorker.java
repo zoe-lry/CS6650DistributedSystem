@@ -10,31 +10,18 @@ import java.util.Map;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import model.LiftRideEvent;
-import software.amazon.awssdk.regions.Region;
-import software.amazon.awssdk.services.dynamodb.DynamoDbClient;
-import software.amazon.awssdk.services.dynamodb.model.*;
+import model.QueuedMessage;
 
 public class ConsumerWorker implements Runnable {
 
-  private Connection connection;
   private static final Gson GSON = new Gson();
-
   private static final String QUEUE_NAME = "rpc_queue";
-//  private Map<Integer, CopyOnWriteArrayList<LiftRideEvent>> records;
-//  private static AtomicInteger count;
-//  private static final DynamoDbClient dynamoDb = DynamoDbClient.builder()
-//      .endpointOverride(java.net.URI.create("http://localhost:8000")) // Change to AWS endpoint when deploying
-//      .build();
-  private static final   DynamoDbClient dynamoDb = DynamoDbClient.builder()
-      // Optionally specify a region. If you're using an IAM role, the region might also be taken from env config.
-      .region(Region.US_WEST_2)
-      .build();
+  private final Connection connection;
+  private final DynamoDBBatchWriter batchWriter;
 
-  public ConsumerWorker(Connection connection,
-      Map<Integer, CopyOnWriteArrayList<LiftRideEvent>> records, AtomicInteger count) {
+  public ConsumerWorker(Connection connection, DynamoDBBatchWriter batchWriter) {
     this.connection = connection;
-//    this.records = records;
-//    this.count = count;
+    this.batchWriter = batchWriter;
   }
 
   @Override
@@ -46,25 +33,21 @@ public class ConsumerWorker implements Runnable {
 //      System.out.println(" [*] Waiting for messages. To exit press CTRL+C");
 
       DeliverCallback deliverCallback = (consumerTag, delivery) -> {
-        Long start = System.currentTimeMillis();
         String message = new String(delivery.getBody(), StandardCharsets.UTF_8);
 
         try {
-          LiftRideEvent liftRideEvent = GSON.fromJson(message, LiftRideEvent.class);
-          saveToDynamoDB(liftRideEvent);
-//          count.incrementAndGet();
-//          System.out.println(count.get());
+          LiftRideEvent event = GSON.fromJson(message, LiftRideEvent.class);
+          batchWriter.addMessage(new QueuedMessage(
+              channel,
+              delivery.getEnvelope().getDeliveryTag(),
+              event));
 
         } catch (JsonSyntaxException e) {
           throw new RuntimeException(e);
         }
-//        System.out.println(" Count :" + count.toString() + " [x] Received '" + message + "'");
-        channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
-//        System.out.println(System.currentTimeMillis() - start);
-//        System.out.println(Thread.currentThread().getId());
+//        channel.basicAck(delivery.getEnvelope().getDeliveryTag(), false);
 
       };
-
 
       channel.basicConsume(QUEUE_NAME, false, deliverCallback, consumerTag -> {
       });
@@ -74,31 +57,31 @@ public class ConsumerWorker implements Runnable {
     }
   }
 
-  private void saveToDynamoDB(LiftRideEvent event) {
-    Map<String, AttributeValue> item = new HashMap<>();
-
-    String seasonDayTime = event.getSeasonID() + "-" + event.getDayID() + "-" + event.getBody().getTime();
-    String resortSeasonDayKey = event.getResortID() + "-" + event.getSeasonID() + "-" + event.getDayID();
-
-    item.put("SkierID", AttributeValue.builder().n(String.valueOf(event.getSkierID())).build());
-    item.put("SeasonDayTime", AttributeValue.builder().s(seasonDayTime).build());
-
-    item.put("ResortID", AttributeValue.builder().n(String.valueOf(event.getResortID())).build());
-    item.put("LiftID", AttributeValue.builder().n(String.valueOf(event.getBody().getLiftID())).build());
-    item.put("Time", AttributeValue.builder().n(String.valueOf(event.getBody().getTime())).build());
-    item.put("VerticalGain", AttributeValue.builder().n(String.valueOf(event.getBody().getLiftID() * 10)).build());
-
-    // Required for GSI: ResortDayIndex
-    item.put("ResortSeasonDayKey", AttributeValue.builder().s(resortSeasonDayKey).build());
-
-    PutItemRequest request = PutItemRequest.builder()
-        .tableName("lift_rides")
-        .item(item)
-        .build();
-
-    dynamoDb.putItem(request);
-//    System.out.println("📌 Inserted event into DynamoDB: " + event);
-  }
+//  private void saveToDynamoDB(LiftRideEvent event) {
+//    Map<String, AttributeValue> item = new HashMap<>();
+//
+//    String seasonDayTime = event.getSeasonID() + "-" + event.getDayID() + "-" + event.getBody().getTime();
+//    String resortSeasonDayKey = event.getResortID() + "-" + event.getSeasonID() + "-" + event.getDayID();
+//
+//    item.put("SkierID", AttributeValue.builder().n(String.valueOf(event.getSkierID())).build());
+//    item.put("SeasonDayTime", AttributeValue.builder().s(seasonDayTime).build());
+//
+//    item.put("ResortID", AttributeValue.builder().n(String.valueOf(event.getResortID())).build());
+//    item.put("LiftID", AttributeValue.builder().n(String.valueOf(event.getBody().getLiftID())).build());
+//    item.put("Time", AttributeValue.builder().n(String.valueOf(event.getBody().getTime())).build());
+//    item.put("VerticalGain", AttributeValue.builder().n(String.valueOf(event.getBody().getLiftID() * 10)).build());
+//
+//    // Required for GSI: ResortDayIndex
+//    item.put("ResortSeasonDayKey", AttributeValue.builder().s(resortSeasonDayKey).build());
+//
+//    PutItemRequest request = PutItemRequest.builder()
+//        .tableName("lift_rides")
+//        .item(item)
+//        .build();
+//
+//    dynamoDb.putItem(request);
+////    System.out.println("📌 Inserted event into DynamoDB: " + event);
+//  }
 
 
 }

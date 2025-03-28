@@ -10,13 +10,15 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.IntStream;
+import org.apache.commons.lang3.concurrent.EventCountCircuitBreaker;
+import java.util.concurrent.TimeUnit;
 
 public class SendRequests {
 
-  public static final int TOTAL_NUM_EVENTS = 50_000;
+  public static final int TOTAL_NUM_EVENTS = 200_000;
   static final int INITIAL_NUM_CONSUMERS = 32;
-  public static final int INITIAL_NUM_REQUEST_PER_THREAD = 100;
-  public static final int PHASE_TWO_NUM_CONSUMERS = 32;
+  public static final int INITIAL_NUM_REQUEST_PER_THREAD = 1000;
+  public static final int PHASE_TWO_NUM_CONSUMERS = 200;
   public static final int PHASE_NUM_REQUEST_PER_THREAD =
       TOTAL_NUM_EVENTS - (INITIAL_NUM_CONSUMERS * INITIAL_NUM_REQUEST_PER_THREAD);
   public static final int QUEUE_CAPACITY = 1000;
@@ -28,11 +30,11 @@ public class SendRequests {
   public static List<Thread> consumerThreads = new ArrayList<>();
   public static ConcurrentLinkedQueue<ConsumerResult> resultsQueue = new ConcurrentLinkedQueue<>();
   public static BlockingQueue<LiftRideEvent> queue = new LinkedBlockingQueue<>(QUEUE_CAPACITY);
-
+  public static EventCountCircuitBreaker breaker = new EventCountCircuitBreaker(2000, 1, TimeUnit.SECONDS, 1800);
   public static void createThread(int numThreads, int numRequests) {
     IntStream.range(0, numThreads).forEach(i -> {
       Thread cThread = new Thread(
-          new Consumer(queue, i, numRequests, resultsQueue, firstDoneLatch, firstDoneTriggered)
+          new Consumer(queue, i, numRequests, resultsQueue, firstDoneLatch, firstDoneTriggered, breaker)
       );
       cThread.start();
       consumerThreads.add(cThread);

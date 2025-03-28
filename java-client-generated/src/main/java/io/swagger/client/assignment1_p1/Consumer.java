@@ -14,6 +14,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.IntStream;
+import org.apache.commons.lang3.concurrent.EventCountCircuitBreaker;
 
 public class Consumer implements Runnable {
 
@@ -26,28 +27,38 @@ public class Consumer implements Runnable {
   private final ConcurrentLinkedQueue<ConsumerResult> resultsQueue;  // Queue to send results to main thread
   private final CountDownLatch firstDoneLatch;
   private final AtomicBoolean firstDoneTriggered;
+  private final EventCountCircuitBreaker breaker;
 
   public static final int MAX_RETRIES = 5;
-        public static final String BASE_URL = "http://localhost:8080";
-//  public static final String BASE_URL = "http://ec2-35-91-165-228.us-west-2.compute.amazonaws.com:8080/Server/"; // Single Servlet
+//  public static final String BASE_URL = "http://localhost:8080";
+  public static final String BASE_URL = "http://ec2-44-248-2-150.us-west-2.compute.amazonaws.com:8080/Server/"; // Single Servlet
 //  public static final String BASE_URL = "http://server-load-balancer-165699902.us-west-2.elb.amazonaws.com/Server/"; //Load Balancer
 
 
   public Consumer(BlockingQueue<LiftRideEvent> queue, int consumerId, int numRequests,
       ConcurrentLinkedQueue<ConsumerResult> resultsQueue, CountDownLatch firstDoneLatch,
-      AtomicBoolean firstDoneTriggered) {
+      AtomicBoolean firstDoneTriggered, EventCountCircuitBreaker breaker) {
     this.queue = queue;
     this.consumerId = consumerId;
     this.numRequests = numRequests;
     this.resultsQueue = resultsQueue;
     this.firstDoneLatch = firstDoneLatch;
     this.firstDoneTriggered = firstDoneTriggered;
+    this.breaker = breaker;
   }
 
   @Override
   public void run() {
     this.skiersApi.getApiClient().setBasePath(BASE_URL);
     IntStream.range(0, numRequests).anyMatch(i -> {
+      while (!breaker.checkState()) {
+        try {
+          Thread.sleep(10);  // Wait a little before retrying if the circuit is open
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          return false;
+        }
+      }
       try {
         LiftRideEvent event = queue.take();
         if (event.isPoisonPill()) {  // End if a poisonPill found
@@ -71,9 +82,11 @@ public class Consumer implements Runnable {
     for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
         ApiResponse<Void> response = skiersApi.writeNewLiftRideWithHttpInfo(
-            event.getBody(), event.getResortID(), event.getSeasonID(), event.getDayID(), event.getSkierID());
+            event.getBody(), event.getResortID(), event.getSeasonID(), event.getDayID(),
+            event.getSkierID());
         if (response.getStatusCode() == 201) {
           numOfSuccess++;
+          breaker.incrementAndCheckState(); // ✅ Register successful request
           break;
         } else if (response.getStatusCode() >= 400 && response.getStatusCode() < 600) {
           System.out.println("Consumer " + consumerId + " received error code: " +

@@ -34,11 +34,16 @@
 
 
 ## How to Run the Consumer
-### 1. Update the HOST URL
+### 1. Update the HOST URL and Database config
 - Open the `MultiThreadedConsumer.java`
 - Find this line and change it if needed:
   ```java
   private static final String HOST = "172.31.31.xxx";
+- Find this line and change the region if needed:
+  ```java
+  DynamoDbClient dynamoDb = DynamoDbClient.builder()
+        .region(Region.US_WEST_2)
+        .build();
 
 ### 2. Upload the jar file to Consumer ec2 instance
 - Run
@@ -48,5 +53,53 @@
 - Upload `Consumer/target/Consumer-1.0-SNAPSHOT-jar-with-dependencies.jar` to the ec2
 
 ### 3. Run jar file in ec2 instance
+- Run
   ```java
    java -jar Consumer-1.0-SNAPSHOT-jar-with-dependencies.jar
+
+
+## How to create the DynamoDB table
+### 1. set up the aws credential
+- Run and set up the credentials
+    ```angular2svg
+        nano ~/.aws/credentials
+### 2. Create table
+ ```angular2svg
+    aws dynamodb create-table \
+      --table-name lift_rides \
+      --attribute-definitions \
+        AttributeName=SkierID,AttributeType=N \
+        AttributeName=SeasonDayTime,AttributeType=S \
+        AttributeName=ResortSeasonDayKey,AttributeType=S \
+      --key-schema \
+        AttributeName=SkierID,KeyType=HASH \
+        AttributeName=SeasonDayTime,KeyType=RANGE \
+      --provisioned-throughput ReadCapacityUnits=100,WriteCapacityUnits=1000 \
+      --global-secondary-indexes '[
+        {
+          "IndexName": "ResortSeasonDayIndex",
+          "KeySchema": [
+            {"AttributeName": "ResortSeasonDayKey", "KeyType": "HASH"},
+            {"AttributeName": "SkierID", "KeyType": "RANGE"}
+          ],
+          "Projection": {
+            "ProjectionType": "ALL"
+          },
+          "ProvisionedThroughput": {
+            "ReadCapacityUnits": 100,
+            "WriteCapacityUnits": 1000
+          }
+        }
+      ]'
+ ```
+
+### 3. If need to delete table, run:
+```angular2svg
+    aws dynamodb delete-table --table-name lift_rides
+```
+    
+    
+### 4. If need to scan table, run:
+```angular2svg
+     aws dynamodb scan --table-name lift_rides --select "COUNT"
+```
